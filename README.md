@@ -55,11 +55,11 @@ cp .env.example .env   # 然后编辑 .env
 ### 3. 启动
 
 ```bash
-# Linux/macOS
-python -m uvicorn proxy:app --host 127.0.0.1 --port 8000
-
-# Windows 也可双击 start-eyes.bat
+python run.py   # 自动探测可用端口：8000 被占会依次尝试 8001、8002...
 ```
+
+启动后会打印实际地址，Agent 里填**打印出来的那个**（默认 http://127.0.0.1:8000/v1）。
+Windows 也可双击 start-eyes.bat。
 
 ### 4. Agent 接入（通用）
 

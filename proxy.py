@@ -198,6 +198,11 @@ async def chat(req: Request):
     if client_model not in KNOWN_MODELS:
         body["model"] = "deepseek-chat"
 
+    # DeepSeek 只认 system/user/assistant/tool，把 developer 角色归一为 system
+    for msg in body.get("messages", []):
+        if msg.get("role") == "developer":
+            msg["role"] = "system"
+
     n_img = await process_images(body.get("messages", []))
     n_path = await process_text_paths(body.get("messages", []))
     had_visual = n_img + n_path > 0
@@ -241,6 +246,10 @@ async def chat(req: Request):
                             except json.JSONDecodeError:
                                 pass
                     yield line + "\n"
+        except Exception as e:  # 流中途异常，打日志并优雅结束
+            print(f"[流转发异常] {e!r}", flush=True)
+            yield f'data: {{"error": {{"message": "proxy stream error: {e}"}}}}\n\n'
+            yield "data: [DONE]\n\n"
         finally:
             db.log_request(
                 client_model, usage,
