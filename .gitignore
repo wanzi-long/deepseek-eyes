@@ -1,0 +1,11 @@
+# 环境与密钥
+.env
+
+# 数据与日志
+*.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/

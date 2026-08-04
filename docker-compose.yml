@@ -1,0 +1,13 @@
+services:
+  deepseek-eyes:
+    build: .
+    container_name: deepseek-eyes
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - eyes-data:/data
+
+volumes:
+  eyes-data:
