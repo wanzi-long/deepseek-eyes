@@ -190,7 +190,14 @@ KNOWN_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"}
 @app.post("/chat/completions")  # 兼容 base_url 不带 /v1 的客户端
 async def chat(req: Request):
     check_auth(req)
-    body = await req.json()
+    raw = await req.body()
+    try:
+        body = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        try:
+            body = json.loads(raw.decode("gbk"))  # 兼容 Windows 上 GBK 编码的客户端
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "请求体不是合法 JSON（请使用 UTF-8 编码）")
     if not DEEPSEEK_API_KEY:
         raise HTTPException(500, "代理未配置 DEEPSEEK_API_KEY")
 
