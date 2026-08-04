@@ -34,7 +34,7 @@ Agent ──聊天请求──▶ 本代理 ──┬─ 内嵌图片 ──▶ 
 ### 1. 拿代码装依赖
 
 ```bash
-git clone <your-repo-url> deepseek-eyes && cd deepseek-eyes
+git clone https://github.com/wanzi-long/deepseek-eyes.git && cd deepseek-eyes
 pip install -r requirements.txt
 ```
 
