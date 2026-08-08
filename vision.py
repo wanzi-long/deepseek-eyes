@@ -1,7 +1,7 @@
 """GLM-4V-Flash 免费视觉识别（智谱开放平台，OpenAI 兼容格式）"""
 import httpx
 
-from config import ZHIPU_API_KEY
+import config
 
 URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
@@ -24,7 +24,7 @@ PROMPT = (
 
 async def describe_image(image_url: str) -> str:
     """image_url 支持 http(s) 链接和 data:image/...;base64,... 两种形式"""
-    if not ZHIPU_API_KEY:
+    if not config.ZHIPU_API_KEY:
         return "[视觉模块未配置 ZHIPU_API_KEY，无法识别图片，请直接描述图片内容]"
 
     payload = {
@@ -47,7 +47,7 @@ async def describe_image(image_url: str) -> str:
             async with httpx.AsyncClient(timeout=60) as c:
                 r = await c.post(
                     URL,
-                    headers={"Authorization": f"Bearer {ZHIPU_API_KEY}"},
+                    headers={"Authorization": f"Bearer {config.ZHIPU_API_KEY}"},
                     json=payload,
                 )
                 r.raise_for_status()

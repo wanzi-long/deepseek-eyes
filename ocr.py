@@ -10,19 +10,19 @@ import zipfile
 
 import httpx
 
-from config import MINERU_API_KEY
+import config
 
 BASE = "https://mineru.net/api/v4"
 
 
 async def ocr_file(path: str, is_ocr: bool = True) -> str:
-    if not MINERU_API_KEY:
+    if not config.MINERU_API_KEY:
         raise RuntimeError("未配置 MINERU_API_KEY（在 mineru.net 申请，每日有免费额度）")
     if not os.path.exists(path):
         raise FileNotFoundError(path)
 
     name = os.path.basename(path)
-    headers = {"Authorization": f"Bearer {MINERU_API_KEY}"}
+    headers = {"Authorization": f"Bearer {config.MINERU_API_KEY}"}
 
     async with httpx.AsyncClient(timeout=180) as c:
         # 1. 申请上传链接

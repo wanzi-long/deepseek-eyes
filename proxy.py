@@ -18,9 +18,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+import config
 import db
-from config import (DEEPSEEK_API_KEY, DEEPSEEK_BASE, MINERU_API_KEY,
-                    PROXY_API_KEY, WORKSPACE_ROOT)
 from ocr import materialize_image, ocr_file
 from vision import describe_image
 
@@ -29,7 +28,7 @@ db.init()
 
 
 def check_auth(req: Request):
-    if PROXY_API_KEY and req.headers.get("authorization") != f"Bearer {PROXY_API_KEY}":
+    if config.PROXY_API_KEY and req.headers.get("authorization") != f"Bearer {config.PROXY_API_KEY}":
         raise HTTPException(401, "invalid proxy api key")
 
 
@@ -43,8 +42,8 @@ PATH_RE = re.compile(
 def resolve_path(raw: str):
     """相对路径依次按代理 cwd 和 WORKSPACE_ROOT 解析"""
     candidates = [Path(raw)]
-    if not Path(raw).is_absolute() and WORKSPACE_ROOT:
-        candidates.append(Path(WORKSPACE_ROOT) / raw)
+    if not Path(raw).is_absolute() and config.WORKSPACE_ROOT:
+        candidates.append(Path(config.WORKSPACE_ROOT) / raw)
     for c in candidates:
         if c.exists():
             return c
@@ -123,7 +122,7 @@ async def handle_one_image(url: str, force_ocr: bool) -> str:
             break
 
     need_ocr = is_doc or force_ocr
-    if need_ocr and MINERU_API_KEY:
+    if need_ocr and config.MINERU_API_KEY:
         path = await materialize_image(url)
         if path:
             try:
@@ -198,7 +197,7 @@ async def chat(req: Request):
             body = json.loads(raw.decode("gbk"))  # 兼容 Windows 上 GBK 编码的客户端
         except Exception:  # noqa: BLE001
             raise HTTPException(400, "请求体不是合法 JSON（请使用 UTF-8 编码）")
-    if not DEEPSEEK_API_KEY:
+    if not config.DEEPSEEK_API_KEY:
         raise HTTPException(500, "代理未配置 DEEPSEEK_API_KEY")
 
     client_model = body.get("model", "")
@@ -218,8 +217,8 @@ async def chat(req: Request):
         # 让流式响应最后带上 usage，否则统计不到缓存数据
         body.setdefault("stream_options", {})["include_usage"] = True
 
-    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
-    url = f"{DEEPSEEK_BASE}/chat/completions"
+    headers = {"Authorization": f"Bearer {config.DEEPSEEK_API_KEY}"}
+    url = f"{config.DEEPSEEK_BASE}/chat/completions"
     t0 = time.time()
     client = httpx.AsyncClient(timeout=httpx.Timeout(300, connect=30))
 
@@ -322,6 +321,85 @@ async def ocr(req: Request, body: OcrReq):
     out.write_text(md, encoding="utf-8")
     db.log_request("mineru-ocr", {}, False, True, int((time.time() - t0) * 1000))
     return {"markdown_path": str(out), "chars": len(md)}
+
+
+# ---------------- 配置面板 ----------------
+
+CONFIG_FIELDS = [
+    ("DEEPSEEK_API_KEY", "DeepSeek API Key", "platform.deepseek.com"),
+    ("ZHIPU_API_KEY", "智谱 API Key（GLM-4V-Flash 免费）", "open.bigmodel.cn"),
+    ("MINERU_API_KEY", "MinerU API Key（可选，文档 OCR）", "mineru.net"),
+    ("PROXY_API_KEY", "代理访问密钥（客户端填这个）", "自己定，建议 16 位以上"),
+    ("WORKSPACE_ROOT", "相对路径解析根目录（可选）", "如 C:/Users/you/Desktop"),
+]
+
+CONFIG_HTML = """<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><title>DeepSeek Eyes 配置</title>
+<style>
+body{font-family:system-ui;background:#0f172a;color:#e2e8f0;max-width:640px;margin:40px auto;padding:0 16px}
+h1{font-size:20px}label{display:block;margin:16px 0 4px;font-size:13px;color:#94a3b8}
+input{width:100%;padding:10px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;box-sizing:border-box}
+button{margin-top:24px;padding:12px 24px;border:0;border-radius:8px;background:#38bdf8;color:#0f172a;font-weight:700;cursor:pointer}
+#msg{margin-top:12px;font-size:14px}.hint{font-size:12px;color:#64748b}
+</style></head><body>
+<h1>🔧 DeepSeek Eyes 配置面板</h1>
+<p class="hint">保存后立即生效，写入项目目录的 .env</p>
+__FIELDS__
+<label>验证密钥（当前 PROXY_API_KEY，未设置过则留空）</label>
+<input id="__auth__" type="password" placeholder="">
+<button onclick="save()">保存并生效</button>
+<div id="msg"></div>
+<script>
+async function save(){
+  const values={};
+  document.querySelectorAll('[data-k]').forEach(i=>values[i.dataset.k]=i.value.trim());
+  const r = await fetch('/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({auth:document.getElementById('__auth__').value.trim(),values})});
+  const j = await r.json().catch(()=>({detail:'保存失败'}));
+  document.getElementById('msg').textContent = r.ok ? '✅ 已保存并热生效，无需重启' : ('❌ '+(j.detail||'保存失败'));
+}
+</script></body></html>"""
+
+
+@app.get("/config")
+async def config_page():
+    from fastapi.responses import HTMLResponse
+    fields = []
+    for key, label, hint in CONFIG_FIELDS:
+        cur = getattr(config, key, "") or ""
+        fields.append(
+            f'<label>{label} <span class="hint">{hint}</span></label>'
+            f'<input data-k="{key}" value="{cur}">'
+        )
+    return HTMLResponse(CONFIG_HTML.replace("__FIELDS__", "\n".join(fields)))
+
+
+class ConfigReq(BaseModel):
+    auth: str = ""
+    values: dict[str, str]
+
+
+@app.post("/config")
+async def config_save(body: ConfigReq):
+    if config.PROXY_API_KEY and body.auth != config.PROXY_API_KEY:
+        raise HTTPException(403, "验证密钥错误（需要当前的 PROXY_API_KEY）")
+    allowed = {k for k, _, _ in CONFIG_FIELDS}
+    lines = config.ENV_PATH.read_text(encoding="utf-8").splitlines() if config.ENV_PATH.exists() else []
+    seen, out = set(), []
+    for line in lines:
+        if "=" in line and not line.strip().startswith("#"):
+            k = line.split("=", 1)[0].strip()
+            if k in allowed and k in body.values:
+                out.append(f"{k}={body.values[k]}")
+                seen.add(k)
+                continue
+        out.append(line)
+    for k, v in body.values.items():
+        if k in allowed and k not in seen:
+            out.append(f"{k}={v}")
+    config.ENV_PATH.write_text("\n".join(out) + "\n", encoding="utf-8")
+    config.reload()
+    return {"ok": True}
 
 
 @app.get("/v1/stats")
