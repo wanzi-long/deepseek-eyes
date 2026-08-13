@@ -181,8 +181,10 @@ async def process_images(messages: list) -> int:
     return count
 
 
-# 客户端可能发来各种模型名（如 deepseek-4v-flash），统一到底成 DeepSeek 真实模型
-KNOWN_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"}
+# 客户端可能发来各种模型名，统一到底成 DeepSeek 真实模型
+# 官方当前模型：deepseek-v4-flash / deepseek-v4-pro
+# deepseek-chat / deepseek-reasoner 为历史别名（官方已自动把 chat 路由到 v4-flash）
+KNOWN_MODELS = {"deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "deepseek-v4-pro"}
 
 
 @app.post("/v1/chat/completions")
@@ -202,7 +204,7 @@ async def chat(req: Request):
 
     client_model = body.get("model", "")
     if client_model not in KNOWN_MODELS:
-        body["model"] = "deepseek-chat"
+        body["model"] = "deepseek-v4-flash"
 
     # DeepSeek 只认 system/user/assistant/tool，把 developer 角色归一为 system
     for msg in body.get("messages", []):
@@ -273,8 +275,8 @@ async def models(req: Request):
     return {
         "object": "list",
         "data": [
-            {"id": "deepseek-chat", "object": "model", "owned_by": "deepseek"},
-            {"id": "deepseek-reasoner", "object": "model", "owned_by": "deepseek"},
+            {"id": "deepseek-v4-flash", "object": "model", "owned_by": "deepseek"},
+            {"id": "deepseek-v4-pro", "object": "model", "owned_by": "deepseek"},
         ],
     }
 

@@ -29,7 +29,7 @@ async def describe_image(image_url: str) -> str:
 
     payload = {
         "model": "glm-4v-flash",
-        "max_tokens": 1024,
+        "max_tokens": 1024,  # GLM-4V-Flash 免费版硬上限就是 1024，超过会报 400（错误码 1210）
         "messages": [
             {
                 "role": "user",
