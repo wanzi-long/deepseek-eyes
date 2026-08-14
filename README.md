@@ -110,6 +110,71 @@ llm-pi-ai:
 
 > 不改这个配置，Harness 会报 `model "..." does not support image input`，且界面上不显示图片上传按钮。
 
+#### 为什么必须这样（原理）
+
+DeepSeek Harness 底层用 `dsh-llm-pi-ai` 适配器，它在每次请求前有硬性检查：
+
+```js
+// dsh-llm-pi-ai/lib/index.js
+if (containsImage && !model.input.includes("image"))
+    throw new LlmError(`pi-ai model "${model.id}" does not support image input`)
+```
+
+- **模型是否支持图片，完全由配置里的 `input` 字段决定**，默认只有 `["text"]`
+- 前端上传按钮也跟随这个声明显示/隐藏
+- 我们的代理**真实能看图**（图片→GLM 识别→转文字→DeepSeek），所以声明 `image` 是「如实告诉 Harness 能力」，不是 hack
+
+**完整排查清单**（遇到"收不到图片/无上传按钮"时逐条查）：
+
+1. `settings.yaml` 里 provider 有没有 `defaultInput: [text, image]` 或每个模型有没有 `input: [text, image]`
+2. 改完是否**刷新了浏览器**（settings.yaml 热加载，但前端需重新拉模型能力）
+3. 是否**切到了正确的 provider**（确认用的是指向 8000 的 deepseekeyes，而不是直连 DeepSeek 官方的 provider）
+4. 代理是否**在运行**（8000 端口）、`PROXY_API_KEY` 是否匹配
+
+#### 一键提示词（复制给任意 Agent 自查）
+
+把下面这段**直接发给你的 Harness / AI Agent**，它能帮你自动检查并修复：
+
+```
+请帮我检查并修复 DeepSeek Eyes 代理的图片输入配置问题。
+
+背景：我正在用 DeepSeek Eyes 本地代理（http://127.0.0.1:8000/v1）给 DeepSeek
+模型加"看图"能力（图片→GLM-4V 识别→转文字→DeepSeek）。但在 DeepSeek Harness
+界面里无法上传图片、不显示上传按钮。
+
+请按以下步骤排查并修复：
+
+1. 打开 ~/.dsh/settings.yaml（Windows 是 C:\Users\<用户名>\.dsh\settings.yaml）
+2. 找到 llm-pi-ai.providers 里 baseURL 指向 127.0.0.1:8000 的那个 provider
+3. 检查它的模型是否声明了图片输入能力（input 字段含 "image"）
+4. 如果没有，给该 provider 加 defaultInput: [text, image]，并给每个模型加
+   input: [text, image]
+5. 保存后告诉我刷新浏览器页面（Ctrl+F5）
+6. 如果还不显示上传按钮，检查：
+   - 代理是否在运行（访问 http://127.0.0.1:8000/api/service 看返回）
+   - PROXY_API_KEY 是否和 .env 里的一致
+
+参考配置（合并进 settings.yaml 的 llm-pi-ai.providers 部分）：
+  llm-pi-ai:
+    providers:
+      <你的provider名>:
+        apiKeyEnv: DEEPSEEKEYES_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8000/v1
+        defaultInput: [text, image]
+        models:
+          - id: deepseek-v4-flash
+            contextWindow: 1000000
+            maxTokens: 384000
+            input: [text, image]
+          - id: deepseek-v4-pro
+            contextWindow: 1000000
+            maxTokens: 384000
+            input: [text, image]
+
+完成后请总结你改了哪些地方。
+```
+
 #### pi（~/.pi/agent/models.json）
 
 ```json
