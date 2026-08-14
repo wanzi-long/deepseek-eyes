@@ -42,7 +42,7 @@ async def describe_image(image_url: str) -> str:
     }
 
     last_err = None
-    for _ in range(2):  # 免费版有 QPS 限制，失败重试一次
+    for attempt in range(2):  # 免费版有 QPS 限制，失败重试一次
         try:
             async with httpx.AsyncClient(timeout=60) as c:
                 r = await c.post(
@@ -51,7 +51,17 @@ async def describe_image(image_url: str) -> str:
                     json=payload,
                 )
                 r.raise_for_status()
-                return r.json()["choices"][0]["message"]["content"]
+                data = r.json()
+                choice = data["choices"][0]
+                content = choice["message"]["content"]
+                # 免费版 max_tokens 硬上限 1024，检测是否被截断
+                finish_reason = choice.get("finish_reason")
+                if finish_reason == "length":
+                    content += (
+                        "\n\n[提示：GLM-4V-Flash 免费版输出已达 1024 token 上限被截断，"
+                        "长文档建议配置 MINERU_API_KEY 走 OCR 精确提取]"
+                    )
+                return content
         except Exception as e:  # noqa: BLE001
             last_err = e
     return f"[图片识别失败: {last_err}，请用户改用文字描述或稍后重试]"
